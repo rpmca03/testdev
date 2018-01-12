@@ -1,0 +1,277 @@
+<?php
+defined( 'ABSPATH' ) or die( 'No script kiddies please!' );
+/**
+* Plugin Name: Checkout
+* Plugin URI: http://ccprn.com/
+* Description: This Plugin will do checkout process.
+* Version: 1.0 
+* Author: Parag Ranjan
+* Author URI: www.paragranjan.com
+* License: This plugin is not for commercial use
+*/
+define('CHECKDIR', plugin_dir_path(__FILE__));
+
+global $wpdb;
+
+/*function register_session(){
+    if( !session_id() )
+        session_start();
+}
+add_action('init','register_session');*/
+
+	function ch_menu_items(){
+
+		add_menu_page('Checkout', 'Checkout', 'activate_plugins', 'checkout', 'checkout_view');
+		add_submenu_page( 'checkout', 'User Area', 'User', 'manage_options', 'user_area', 'checkout_user');
+		add_submenu_page( 'checkout', 'Product Area', 'Product', 'manage_options', 'product_area', 'checkout_product');
+		add_submenu_page( 'checkout', 'Event Area', 'Event', 'manage_options', 'event_area', 'checkout_event');
+		add_submenu_page( 'checkout', '', '', 'manage_options', 'online_payment', 'onlinepayment');
+	}
+
+	add_action('admin_menu', 'ch_menu_items');
+
+
+function checkout_view(){
+global $wpdb;
+	include('checkout_view.php');	
+}
+
+function checkout_user(){
+global $wpdb;
+echo $complete = $_POST['completeTotal'];
+if($complete != 'user' && $complete != 'Pay Now'){
+			include('checkout_user.php');
+}else{
+	 $user_login = $_POST['user_login'];
+	 $user = $_POST['user'];
+	 $urole = $_POST['urole'];
+	 $price = $_POST['price'];
+	 $quantity = 1;
+	 $paymentMethod = $_POST['paymentMethod'];
+	 if($paymentMethod == 'cash'){
+	?>
+	<div align="center" style="width:70%;">
+	<h3>Purchase Receipt</h3>
+		<p><?php echo $user_login; ?> - <?php echo date('M d, Y H:i:s'); ?></p>
+	<table>
+		<tr>
+			<th>Products</th><th>Quantity</th><th>Price</th><th>Total</th>
+		</tr>
+		<tr>
+			<td><?php echo $urole; ?></td><td>1</td><td><?php echo $price; ?></td><td><?php echo $price; ?></td>
+		</tr>
+	</table>
+	<p style="text-align:center;">Child Care Providers Resource Network of Ottawa (CCPRN)<br>30 Colonnade Rd, Unit 275 Ottawa, ON K2E 7J6<br>Tel: 613-749-5211 Fax: 749-6650 Email: info@ccprn.com </p>	
+	</div>
+	
+	<?php
+	$membershipExpiry = date('Y-m-t',mktime(0,0,0,date("m"),date("d"),date("Y")+1));
+	$wpdb->update( 
+    'ccp_users', 
+    array( 
+        'membership_expiry' => $membershipExpiry 
+    ), 
+    array( 'id' => $user )
+	);
+	$ordernum = $urole . '-' . $user;
+	$payinsert = array(
+		user_id => $user,
+		payment_id => '',
+		approved => '1',
+		message => 'cash',
+		created => date("Y-m-d"),
+		amount => $price,
+		auth_code => 'cash',
+		payment_method => $paymentMethod,
+		order_number => $ordernum
+		);
+	 $payinsertid = $wpdb->insert('payment', $payinsert);
+	}else if($paymentMethod == 'Credit Card'){
+	    $_SESSION['price'] = $price;
+		$_SESSION['role'] = $urole;
+		$ordernum = $urole . '-' . $user;
+		$_SESSION['ordernum'] = $ordernum;
+		$_SESSION['quantity'] = $quantity;
+		$_SESSION['userid'] = $user;
+        $_SESSION['uname'] = $user_login;
+	   wp_redirect(get_option('siteurl'). '/wp-admin/admin.php?page=online_payment');
+        require_once(CHECKDIR . 'Beanstream/Gateway.php');
+		
+			
+			 if($complete == 'Pay Now'){
+			}
+	?>
+	
+	
+	<?php
+	}
+}
+
+}
+
+function checkout_product(){
+global $wpdb;
+	 $complete = $_POST['complete'];
+	 $userid = $_POST['puser'];
+	 $productId = $_POST['product'];
+	 $user_login = $_POST['user_login'];
+	 $regularprice = $_POST['regularprice'];
+	 $saleprice = $_POST['saleprice'];
+	 $pname = $_POST['pname'];
+	 $quantity = $_POST['quantity'];
+	 $paymentMethod = $_POST['paymentMethod'];
+	 $total = $regularprice * $quantity;;
+	 if(!isset($complete)){
+		include('checkout_product.php');
+	}else{
+		if($paymentMethod == 'cash'){
+	?>
+			<div align="center" style="width:70%;">
+			<h3>Purchase Receipt</h3>
+				<p><?php echo $user_login; ?> - <?php echo date('M d, Y H:i:s'); ?></p>
+			<table>
+				<tr>
+					<th>Products</th><th>Quantity</th><th>Price</th><th>Total</th>
+				</tr>
+				<tr>
+					<td><?php echo $pname; ?></td><td><?php echo $quantity; ?></td><td><?php echo $regularprice; ?></td><td><?php echo $total; ?></td>
+				</tr>
+			</table>
+			<p style="text-align:center;">Child Care Providers Resource Network of Ottawa (CCPRN)<br>30 Colonnade Rd, Unit 275 Ottawa, ON K2E 7J6<br>Tel: 613-749-5211 Fax: 749-6650 Email: info@ccprn.com </p>	
+			</div>
+		<?php
+		}else{
+		
+		}
+	}	
+
+}
+
+function checkout_event(){
+global $wpdb;
+	include('checkout_event.php');
+}
+
+function onlinepayment(){
+global $wpdb;
+		$price = $_SESSION['price'];
+		$userId = $_SESSION['userid'];
+		$userresult = $wpdb->get_results("SELECT * FROM ccp_users WHERE id = $userId", ARRAY_A);
+		$user_email = $userresult[0]['email'];
+		$uname = $_SESSION['uname'];
+		$uphone = $userresult[0]['phone'];
+		$uaddress = $userresult[0]['address'];
+		$city = $userresult[0]['city'];
+		$uprovince = $userresult[0]['province_id'];
+		$provienamql = $wpdb->get_results("SELECT name FROM ccp_provinces WHERE id = $uprovince", ARRAY_A);
+		$provnam = $provienamql[0]['name'];
+			 
+		     $upostal = $userresult[0]['postal_code'];
+			 $ucountry = 'CA';
+		include('payment.php');
+		if(isset($userId)){
+					$chname = $_POST['chname'];
+					$cnumber = $_POST['cnumber'];
+					$expmonth = $_POST['expmonth'];
+					$expyear = substr($_POST['expyear'], -2);
+					$cvd = $_POST['cvd'];
+					$getvalue = $wpdb->get_results("SELECT * from beanstream WHERE type = 't'", ARRAY_A);
+					$merid = $getvalue[0]['merchant_id'];
+					$passcod = $getvalue[0]['api_passcode'];
+					//init api settings (beanstream dashboard > administration > account settings > order settings)
+						//$merchant_id = '300204214'; //INSERT MERCHANT ID (must be a 9 digit string)
+						//$api_key = 'ad719C3034BB4A279013c2cC9e16A7BE'; //INSERT API ACCESS PASSCODE
+					$merchant_id = $merid; //INSERT MERCHANT ID (must be a 9 digit string)
+					$api_key = $passcod; //INSERT API ACCESS PASSCODE
+					$api_version = 'v1'; //default
+					$platform = 'www'; //default
+						
+						
+						//generate a random order number, and set a default $amount (only used for example functions)
+						//test card number '4030000010001234'
+					$order_number = bin2hex(mcrypt_create_iv(22, MCRYPT_DEV_URANDOM));
+					$amount = $price;
+						
+        require_once(CHECKDIR . 'Beanstream/Gateway.php');
+						//init new Beanstream Gateway object
+					$beanstream = new \Beanstream\Gateway($merchant_id, $api_key, $platform, $api_version);
+						
+						//Card Payment Data
+					$payment_data = array(
+								'order_number' => $ordernum,
+								'amount' => $amount,
+								'payment_method' => 'card',
+								'card' => array(
+									'name' => $chname,
+									'number' => $cnumber,
+									'expiry_month' => $expmonth,
+									'expiry_year' => $expyear,
+									'cvd' => $cvd
+								),
+								'billing' => array(
+									'name' => $chname,
+									'email_address' => $user_email,
+									'phone_number' => $uphone,
+									'address_line1' => $uaddress,
+									'city' => $city,
+									'province' => $provnam,
+									'postal_code' => $upostal,
+									'country' => 'CA'
+								),
+								/*'shipping' => array(
+									'name' => 'Shipping Name',
+									'email_address' => 'email@email.com',
+									'phone_number' => '1234567890',
+									'address_line1' => '789-123 Shipping St.',
+									'city' => 'Shippingsville',
+									'province' => 'BC',
+									'postal_code' => 'V8J9I5',
+									'country' => 'CA'
+								)*/
+						);
+						$complete = TRUE; //set to FALSE for PA
+						
+						//Try to submit a Card Payment
+						try {
+						
+							$result = $beanstream->payments()->makeCardPayment($payment_data, $complete);
+							echo "<pre>";
+							//print_r( $result );
+							echo "</pre>";
+							
+							$payinsert = array(
+								user_id => $userId,
+								payment_id => $result['id'],
+								approved => $result['approved'],
+								message => $result['message'],
+								created => $result['created'],
+								amount => $result['amount'],
+								auth_code => $result['auth_code'],
+								payment_method => $result['payment_method'],
+								order_number => $result['order_number']
+							);
+							$payinsertid = $wpdb->insert('payment', $payinsert);
+							echo "Pament successful";
+							exit;
+							//wp_redirect(home_url()); 
+							/*
+							 * Handle successful transaction, payment method returns
+							 * transaction details as result, so $result contains that data
+							 * in the form of associative array.
+							 */
+						} catch (\Beanstream\Exception $e) {
+							/*
+							 * Handle transaction error, $e->code can be checked for a
+							 * specific error, e.g. 211 corresponds to transaction being
+							 * DECLINED, 314 - to missing or invalid payment information
+							 * etc.
+							 */
+							 echo "<pre>";
+							  //print_r($e);
+							  if(!empty($e)){
+							  echo "Doing something wrong.";
+							  echo "<pre>";
+							  }
+					}
+			}
+}
